@@ -6,17 +6,6 @@ import sys
 # --- Partea 1: Parsarea Sistemului de Ecuații ---
 
 def parseaza_sistem(nume_fisier="equations.txt"):
-    """
-    Citește un sistem de ecuații liniare dintr-un fișier text și îl parsează
-    într-o matrice A și un vector B.
-
-    Args:
-        nume_fisier (str): Numele fișierului din care se citește.
-
-    Returns:
-        tuple: Un tuplu conținând matricea coeficienților A (listă de liste)
-               și vectorul constant B (listă).
-    """
     A = []
     B = []
     try:
@@ -240,4 +229,5 @@ if __name__ == "__main__":
             print(f"  [{', '.join(f'{x:.4f}' for x in rand)}]")
     else:
         print(solutie_inversare)
+
 
