@@ -1,3 +1,5 @@
+
+
 import numpy as np
 import time
 import pickle
@@ -5,25 +7,20 @@ import pandas as pd
 from torchvision.datasets import MNIST
 
 
-# --- PASUL 1: Încărcarea și Pregătirea Datelor (Metoda Robustă) ---
+# --- PASUL 1: Încărcarea și Pregătirea Datelor ---
 
 def descarca_mnist(este_antrenament: bool):
-    """
-    Descarcă setul de date MNIST folosind torchvision și îl convertește în format NumPy.
-    """
-    print(f"Se descarcă setul de date {'de antrenament' if este_antrenament else 'de test'}...")
+
+    print(f"Se descarcă setul de date MNIST {'de antrenament' if este_antrenament else 'de validare'}...")
     dataset = MNIST(root='./data',
                     train=este_antrenament,
                     transform=lambda img: np.array(img, dtype=np.float32).flatten(),
                     download=True)
 
-    date_imagini = []
-    date_etichete = []
-    for imagine, eticheta in dataset:
-        date_imagini.append(imagine)
-        date_etichete.append(eticheta)
+    date_imagini = np.array([img for img, label in dataset])
+    date_etichete = np.array([label for img, label in dataset])
 
-    return np.array(date_imagini), np.array(date_etichete)
+    return date_imagini, date_etichete
 
 
 def preproceseaza_date(x, y):
@@ -41,57 +38,50 @@ def preproceseaza_date(x, y):
 
 def incarca_date_competitie(cale_fisier_pkl):
     """
-    Funcție specializată pentru a încărca fișierul de test al competiției.
+    Funcție specializată și robustă pentru a încărca fișierul de test al competiției.
+    Gestionează structura imprevizibilă a fișierelor .pkl.
     """
     print(f"Se încarcă datele de competiție din '{cale_fisier_pkl}'...")
     with open(cale_fisier_pkl, 'rb') as f:
         data_bruta = pickle.load(f, encoding='latin1')
 
-    imagini = data_bruta[0]
+    imagini = data_bruta
+    # Navigăm recursiv prin tuple pentru a extrage matricea NumPy
     while isinstance(imagini, tuple):
         imagini = imagini[0]
 
-    if imagini.ndim == 3:
-        nr_imagini = imagini.shape[0]
-        imagini_vectorizate = imagini.reshape(nr_imagini, -1)
-    else:
-        imagini_vectorizate = imagini.flatten().reshape(1, -1)
+    # --- LOGICĂ NOUĂ ȘI ROBUSTĂ PENTRU APLATIZARE ---
+    numar_total_elemente = imagini.size
+    pixeli_per_imagine = 784
 
-    if imagini_vectorizate.shape[1] != 784:
-        raise ValueError("Dimensiunea caracteristicilor nu este 784.")
+    if numar_total_elemente % pixeli_per_imagine != 0:
+        raise ValueError("Numărul total de pixeli din fișierul de test nu este un multiplu de 784.")
+
+    nr_imagini = numar_total_elemente // pixeli_per_imagine
+
+    # Forțăm redimensionarea la formatul corect (N, 784)
+    imagini_vectorizate = imagini.reshape(nr_imagini, pixeli_per_imagine)
 
     return imagini_vectorizate / 255.0
 
 
-# --- PASUL 2: Definirea Funcțiilor Rețelei Multi-Strat ---
-
-def relu(z):
-    """Funcția de activare ReLU."""
-    return np.maximum(0, z)
-
-
-def derivata_relu(z):
-    """Derivata funcției ReLU."""
-    return z > 0
-
+# --- PASUL 2: Definirea Funcțiilor Rețelei (Revenire la Perceptron Simplu) ---
 
 def softmax(z):
-    """Funcția Softmax stabilă numeric."""
+    """Funcția Softmax stabilă numeric pentru calculul probabilităților."""
     exp_z = np.exp(z - np.max(z, axis=1, keepdims=True))
     return exp_z / np.sum(exp_z, axis=1, keepdims=True)
 
 
-def propagare_inainte(X, W1, b1, W2, b2):
-    """Calculează output-ul rețelei și valorile intermediare."""
-    Z1 = X @ W1 + b1
-    A1 = relu(Z1)
-    Z2 = A1 @ W2 + b2
-    A2 = softmax(Z2)
-    return Z1, A1, Z2, A2
+def propagare_inainte(X, W, b):
+    """
+    Calculează output-ul rețelei (forward pass) pentru un Perceptron simplu.
+    """
+    return softmax(X @ W + b)
 
 
 def calculeaza_acuratete(y_pred_one_hot, y_adevarat_one_hot):
-    """Calculează acuratețea."""
+    """Calculează acuratețea comparând predicțiile cu etichetele reale."""
     predictii = np.argmax(y_pred_one_hot, axis=1)
     etichete_reale = np.argmax(y_adevarat_one_hot, axis=1)
     return np.mean(predictii == etichete_reale)
@@ -109,76 +99,64 @@ if __name__ == '__main__':
     print(f"\nForma datelor de antrenare: {X_antrenare.shape}")
     print(f"Forma datelor de validare: {X_validare.shape}")
 
-    # --- Inițializarea Ponderilor și Hiperparametrilor pentru MLP ---
+    # --- Inițializarea Ponderilor și Hiperparametrilor pentru Perceptron Simplu ---
     nr_caracteristici = X_antrenare.shape[1]
-    nr_neuroni_ascunsi = 128
     nr_clase = Y_antrenare.shape[1]
 
-    W1 = np.random.randn(nr_caracteristici, nr_neuroni_ascunsi) * 0.01
-    b1 = np.zeros((1, nr_neuroni_ascunsi))
-    W2 = np.random.randn(nr_neuroni_ascunsi, nr_clase) * 0.01
-    b2 = np.zeros((1, nr_clase))
+    # Ponderi și bias pentru un singur strat
+    W = np.random.randn(nr_caracteristici, nr_clase) * 0.01
+    b = np.zeros((1, nr_clase))
 
-    rata_invatare = 0.1
-    epoci = 50
+    # Hiperparametri ajustați pentru o acuratețe în jur de 92.5%
+    rata_invatare_initiala = 0.1
+    rata_decay = 0.01  # Scădere lentă a ratei de învățare
+    epoci = 50  # Suficiente epoci pentru ca modelul simplu să atingă platoul
     dimensiune_batch = 64
 
     start_time = time.time()
-    print("\n--- Început Antrenament MLP ---")
+    print("\n--- Început Antrenament Perceptron Simplu ---")
 
     # --- Bucla de Antrenament ---
     for epoca in range(epoci):
+        # Implementarea "Learning Rate Decay"
+        rata_invatare = rata_invatare_initiala / (1 + rata_decay * epoca)
+
         permutare = np.random.permutation(X_antrenare.shape[0])
-        X_antrenare_amestecat = X_antrenare[permutare]
-        Y_antrenare_amestecat = Y_antrenare[permutare]
 
         for i in range(0, X_antrenare.shape[0], dimensiune_batch):
-            X_batch = X_antrenare_amestecat[i:i + dimensiune_batch]
-            Y_batch = Y_antrenare_amestecat[i:i + dimensiune_batch]
+            indici = permutare[i:i + dimensiune_batch]
+            X_batch, Y_batch = X_antrenare[indici], Y_antrenare[indici]
 
             # --- Propagare Înainte ---
-            Z1, A1, Z2, A2 = propagare_inainte(X_batch, W1, b1, W2, b2)
+            A_batch = propagare_inainte(X_batch, W, b)
 
-            # --- Propagare Înapoi (Backpropagation) ---
-            # Eroarea la stratul de ieșire
-            dZ2 = A2 - Y_batch
+            # --- Propagare Înapoi (Calculul Gradientului) ---
+            dZ = A_batch - Y_batch
+            grad_W = (X_batch.T @ dZ) / dimensiune_batch
+            grad_b = np.sum(dZ, axis=0) / dimensiune_batch
 
-            # Gradienții pentru stratul de ieșire
-            grad_W2 = (A1.T @ dZ2) / dimensiune_batch
-            grad_b2 = np.sum(dZ2, axis=0) / dimensiune_batch
+            # --- Actualizarea Ponderilor (Gradient Descent) ---
+            W -= rata_invatare * grad_W
+            b -= rata_invatare * grad_b
 
-            # Eroarea propagată la stratul ascuns
-            dZ1 = (dZ2 @ W2.T) * derivata_relu(Z1)
-
-            # Gradienții pentru stratul ascuns
-            grad_W1 = (X_batch.T @ dZ1) / dimensiune_batch
-            grad_b1 = np.sum(dZ1, axis=0) / dimensiune_batch
-
-            # --- Actualizarea Ponderilor ---
-            W1 -= rata_invatare * grad_W1
-            b1 -= rata_invatare * grad_b1
-            W2 -= rata_invatare * grad_W2
-            b2 -= rata_invatare * grad_b2
-
-        # Afișarea performanței pe setul de validare
-        _, _, _, pred_validare = propagare_inainte(X_validare, W1, b1, W2, b2)
+        # Afișarea performanței pe setul de validare la finalul fiecărei epoci
+        pred_validare = propagare_inainte(X_validare, W, b)
         acuratete = calculeaza_acuratete(pred_validare, Y_validare)
         print(f"Epoca {epoca + 1}/{epoci}, Acuratețe Validare: {acuratete * 100:.2f}%")
 
     end_time = time.time()
     print(f"\nAntrenament finalizat în {end_time - start_time:.2f} secunde.")
 
-    # --- Generarea Fișierului de Predicții ---
+    # --- Generarea Fișierului de Predicții pentru Competiție ---
     print("\n--- Generare fișier de predicții pentru Kaggle ---")
     X_test_competitie = incarca_date_competitie('extended_mnist_test.pkl')
 
-    _, _, _, predictii_finale_one_hot = propagare_inainte(X_test_competitie, W1, b1, W2, b2)
+    predictii_finale_one_hot = propagare_inainte(X_test_competitie, W, b)
     predictii_finale_etichete = np.argmax(predictii_finale_one_hot, axis=1)
 
     submission_df = pd.DataFrame({
         'ImageId': np.arange(1, len(predictii_finale_etichete) + 1),
         'Label': predictii_finale_etichete
     })
-    submission_df.to_csv('submission.csv', index=False)
-    print("Fișierul 'submission.csv' a fost generat cu succes!")
+
 
