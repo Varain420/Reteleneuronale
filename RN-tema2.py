@@ -50,7 +50,7 @@ def incarca_date_competitie(cale_fisier_pkl):
     while isinstance(imagini, tuple):
         imagini = imagini[0]
 
-    # --- LOGICĂ NOUĂ ȘI ROBUSTĂ PENTRU APLATIZARE ---
+    
     numar_total_elemente = imagini.size
     pixeli_per_imagine = 784
 
@@ -59,7 +59,7 @@ def incarca_date_competitie(cale_fisier_pkl):
 
     nr_imagini = numar_total_elemente // pixeli_per_imagine
 
-    # Forțăm redimensionarea la formatul corect (N, 784)
+    
     imagini_vectorizate = imagini.reshape(nr_imagini, pixeli_per_imagine)
 
     return imagini_vectorizate / 255.0
@@ -107,10 +107,10 @@ if __name__ == '__main__':
     W = np.random.randn(nr_caracteristici, nr_clase) * 0.01
     b = np.zeros((1, nr_clase))
 
-    # Hiperparametri ajustați pentru o acuratețe în jur de 92.5%
+    
     rata_invatare_initiala = 0.1
     rata_decay = 0.01  # Scădere lentă a ratei de învățare
-    epoci = 50  # Suficiente epoci pentru ca modelul simplu să atingă platoul
+    epoci = 50  
     dimensiune_batch = 64
 
     start_time = time.time()
@@ -118,7 +118,7 @@ if __name__ == '__main__':
 
     # --- Bucla de Antrenament ---
     for epoca in range(epoci):
-        # Implementarea "Learning Rate Decay"
+        
         rata_invatare = rata_invatare_initiala / (1 + rata_decay * epoca)
 
         permutare = np.random.permutation(X_antrenare.shape[0])
@@ -147,16 +147,5 @@ if __name__ == '__main__':
     end_time = time.time()
     print(f"\nAntrenament finalizat în {end_time - start_time:.2f} secunde.")
 
-    # --- Generarea Fișierului de Predicții pentru Competiție ---
-    print("\n--- Generare fișier de predicții pentru Kaggle ---")
-    X_test_competitie = incarca_date_competitie('extended_mnist_test.pkl')
-
-    predictii_finale_one_hot = propagare_inainte(X_test_competitie, W, b)
-    predictii_finale_etichete = np.argmax(predictii_finale_one_hot, axis=1)
-
-    submission_df = pd.DataFrame({
-        'ImageId': np.arange(1, len(predictii_finale_etichete) + 1),
-        'Label': predictii_finale_etichete
-    })
-
+    
 
