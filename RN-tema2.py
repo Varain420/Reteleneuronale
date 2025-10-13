@@ -1,151 +1,269 @@
-
-
 import numpy as np
-import time
 import pickle
-import pandas as pd
-from torchvision.datasets import MNIST
+import os
 
 
-# --- PASUL 1: Încărcarea și Pregătirea Datelor ---
+class Perceptron:
+    def __init__(self, input_size=784, output_size=10, learning_rate=0.01):
+        """
+        Initialize the perceptron with random weights and zero bias.
 
-def descarca_mnist(este_antrenament: bool):
+        Args:
+            input_size: Number of input features (784 for MNIST)
+            output_size: Number of output classes (10 for digits 0-9)
+            learning_rate: Learning rate for gradient descent
+        """
+        self.learning_rate = learning_rate
+        self.input_size = input_size
+        self.output_size = output_size
 
-    print(f"Se descarcă setul de date MNIST {'de antrenament' if este_antrenament else 'de validare'}...")
-    dataset = MNIST(root='./data',
-                    train=este_antrenament,
-                    transform=lambda img: np.array(img, dtype=np.float32).flatten(),
-                    download=True)
+        # Xavier initialization for weights
+        self.W = np.random.randn(input_size, output_size) * np.sqrt(1.0 / input_size)
+        self.b = np.zeros((output_size,))
 
-    date_imagini = np.array([img for img, label in dataset])
-    date_etichete = np.array([label for img, label in dataset])
+    def softmax(self, z):
+        """
+        Apply softmax activation function with numerical stability.
 
-    return date_imagini, date_etichete
+        Args:
+            z: Weighted sum (m, 10)
+
+        Returns:
+            Probabilities after softmax (m, 10)
+        """
+        # Subtract max for numerical stability
+        z_shifted = z - np.max(z, axis=1, keepdims=True)
+        exp_z = np.exp(z_shifted)
+        return exp_z / np.sum(exp_z, axis=1, keepdims=True)
+
+    def forward_propagation(self, X):
+        """
+        Perform forward propagation: compute weighted sum and apply softmax.
+
+        Args:
+            X: Input matrix of shape (m, 784)
+
+        Returns:
+            Output probabilities of shape (m, 10)
+        """
+        # z = W · x + b
+        z = np.dot(X, self.W) + self.b
+
+        # Apply softmax activation
+        y = self.softmax(z)
+
+        return y
+
+    def cross_entropy_loss(self, y_pred, y_true):
+        """
+        Calculate cross-entropy loss.
+
+        Args:
+            y_pred: Predicted probabilities (m, 10)
+            y_true: One-hot encoded true labels (m, 10)
+
+        Returns:
+            Average loss across batch
+        """
+        m = y_true.shape[0]
+
+        # Clip predictions to avoid log(0)
+        y_pred_clipped = np.clip(y_pred, 1e-15, 1 - 1e-15)
+
+        # CrossEntropy = -sum(y_true * log(y_pred))
+        loss = -np.sum(y_true * np.log(y_pred_clipped)) / m
+
+        return loss
+
+    def backward_propagation(self, X, y_pred, y_true):
+        """
+        Perform backward propagation and update weights and bias.
+
+        Args:
+            X: Input matrix (m, 784)
+            y_pred: Predicted probabilities (m, 10)
+            y_true: One-hot encoded true labels (m, 10)
+        """
+        m = X.shape[0]
+
+        # Calculate gradient: (Target - y)
+        gradient = y_true - y_pred  # (m, 10)
+
+        # Update weights: W = W + μ × (Target - y) × x^T
+        dW = np.dot(X.T, gradient) / m
+        self.W += self.learning_rate * dW
+
+        # Update bias: b = b + μ × (Target - y)
+        db = np.sum(gradient, axis=0) / m
+        self.b += self.learning_rate * db
+
+    def one_hot_encode(self, y, num_classes=10):
+        """
+        Convert class labels to one-hot encoding.
+
+        Args:
+            y: Class labels (m,)
+            num_classes: Number of classes
+
+        Returns:
+            One-hot encoded matrix (m, num_classes)
+        """
+        m = y.shape[0]
+        one_hot = np.zeros((m, num_classes))
+        one_hot[np.arange(m), y.astype(int)] = 1
+        return one_hot
+
+    def train(self, X_train, y_train, X_val=None, y_val=None, epochs=20, batch_size=32):
+        """
+        Train the perceptron using mini-batch gradient descent.
+
+        Args:
+            X_train: Training input (m, 784)
+            y_train: Training labels (m,)
+            X_val: Validation input (optional)
+            y_val: Validation labels (optional)
+            epochs: Number of training epochs
+            batch_size: Size of mini-batches
+        """
+        m = X_train.shape[0]
+        y_train_encoded = self.one_hot_encode(y_train)
+
+        for epoch in range(epochs):
+            # Shuffle data
+            indices = np.random.permutation(m)
+            X_shuffled = X_train[indices]
+            y_shuffled = y_train_encoded[indices]
+
+            # Mini-batch training
+            for i in range(0, m, batch_size):
+                X_batch = X_shuffled[i:i + batch_size]
+                y_batch = y_shuffled[i:i + batch_size]
+
+                # Forward propagation
+                y_pred = self.forward_propagation(X_batch)
+
+                # Backward propagation
+                self.backward_propagation(X_batch, y_pred, y_batch)
+
+            # Calculate training loss
+            y_pred_train = self.forward_propagation(X_train)
+            train_loss = self.cross_entropy_loss(y_pred_train, y_train_encoded)
+
+            # Calculate validation accuracy if provided
+            if X_val is not None and y_val is not None:
+                val_acc = self.accuracy(X_val, y_val)
+                print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss:.4f}, Val Accuracy: {val_acc:.4f}")
+            else:
+                print(f"Epoch {epoch + 1}/{epochs}, Train Loss: {train_loss:.4f}")
+
+    def predict(self, X):
+        """
+        Make predictions on input data.
+
+        Args:
+            X: Input matrix (m, 784)
+
+        Returns:
+            Predicted class labels (m,)
+        """
+        y_pred = self.forward_propagation(X)
+        return np.argmax(y_pred, axis=1)
+
+    def accuracy(self, X, y):
+        """
+        Calculate accuracy on input data.
+
+        Args:
+            X: Input matrix (m, 784)
+            y: True labels (m,)
+
+        Returns:
+            Accuracy score
+        """
+        predictions = self.predict(X)
+        return np.mean(predictions == y)
 
 
-def preproceseaza_date(x, y):
-    """
-    Normalizează imaginile și convertește etichetele în format one-hot.
-    """
-    x_normalizat = x / 255.0
+# ============================================================================
+# MAIN: Load data and train perceptron
+# ============================================================================
 
-    nr_clase = 10
-    y_one_hot = np.zeros((y.shape[0], nr_clase))
-    y_one_hot[np.arange(y.shape[0]), y] = 1
+if __name__ == "__main__":
+    # Load data from pickle files
+    data_path = '/kaggle/input/fii-nn-2025-homework-2'
 
-    return x_normalizat, y_one_hot
+    with open(os.path.join(data_path, 'extended_mnist_train.pkl'), 'rb') as f:
+        train_data = pickle.load(f)
 
+    with open(os.path.join(data_path, 'extended_mnist_test.pkl'), 'rb') as f:
+        test_data = pickle.load(f)
 
-def incarca_date_competitie(cale_fisier_pkl):
-    """
-    Funcție specializată și robustă pentru a încărca fișierul de test al competiției.
-    Gestionează structura imprevizibilă a fișierelor .pkl.
-    """
-    print(f"Se încarcă datele de competiție din '{cale_fisier_pkl}'...")
-    with open(cale_fisier_pkl, 'rb') as f:
-        data_bruta = pickle.load(f, encoding='latin1')
+    # Data structure: tuple of (image, label) pairs
+    # Extract images and labels from the tuple of tuples
+    X_train = np.array([item[0] for item in train_data], dtype=np.float32)
+    y_train = np.array([item[1] for item in train_data], dtype=np.int32)
 
-    imagini = data_bruta
-    # Navigăm recursiv prin tuple pentru a extrage matricea NumPy
-    while isinstance(imagini, tuple):
-        imagini = imagini[0]
+    X_test = np.array([item[0] for item in test_data], dtype=np.float32)
 
-    
-    numar_total_elemente = imagini.size
-    pixeli_per_imagine = 784
+    print(f"Training set shape (before flatten): {X_train.shape}")
+    print(f"Training labels shape: {y_train.shape}")
+    print(f"Test set shape (before flatten): {X_test.shape}")
 
-    if numar_total_elemente % pixeli_per_imagine != 0:
-        raise ValueError("Numărul total de pixeli din fișierul de test nu este un multiplu de 784.")
+    # Flatten images from (n, 28, 28) to (n, 784)
+    X_train = X_train.reshape(X_train.shape[0], -1)
+    X_test = X_test.reshape(X_test.shape[0], -1)
 
-    nr_imagini = numar_total_elemente // pixeli_per_imagine
+    print(f"Training set shape (after flatten): {X_train.shape}")
+    print(f"Test set shape (after flatten): {X_test.shape}")
 
-    
-    imagini_vectorizate = imagini.reshape(nr_imagini, pixeli_per_imagine)
+    # Normalize features to [0, 1]
+    X_train = X_train / 255.0
+    X_test = X_test / 255.0
 
-    return imagini_vectorizate / 255.0
+    # Split into training and validation sets (80/20 split)
+    n_train = int(0.8 * X_train.shape[0])
+    indices = np.random.permutation(X_train.shape[0])
 
+    train_indices = indices[:n_train]
+    val_indices = indices[n_train:]
 
-# --- PASUL 2: Definirea Funcțiilor Rețelei (Revenire la Perceptron Simplu) ---
+    X_train_split = X_train[train_indices]
+    y_train_split = y_train[train_indices]
+    X_val = X_train[val_indices]
+    y_val = y_train[val_indices]
 
-def softmax(z):
-    """Funcția Softmax stabilă numeric pentru calculul probabilităților."""
-    exp_z = np.exp(z - np.max(z, axis=1, keepdims=True))
-    return exp_z / np.sum(exp_z, axis=1, keepdims=True)
+    print(f"\nTraining split shape: {X_train_split.shape}")
+    print(f"Validation split shape: {X_val.shape}")
 
+    # Initialize and train perceptron
+    perceptron = Perceptron(input_size=X_train.shape[1], output_size=10, learning_rate=0.1)
 
-def propagare_inainte(X, W, b):
-    """
-    Calculează output-ul rețelei (forward pass) pentru un Perceptron simplu.
-    """
-    return softmax(X @ W + b)
+    perceptron.train(
+        X_train_split, y_train_split,
+        X_val=X_val, y_val=y_val,
+        epochs=25,
+        batch_size=32
+    )
 
+    # Evaluate on validation set
+    val_accuracy = perceptron.accuracy(X_val, y_val)
+    print(f"\nFinal Validation Accuracy: {val_accuracy:.4f}")
 
-def calculeaza_acuratete(y_pred_one_hot, y_adevarat_one_hot):
-    """Calculează acuratețea comparând predicțiile cu etichetele reale."""
-    predictii = np.argmax(y_pred_one_hot, axis=1)
-    etichete_reale = np.argmax(y_adevarat_one_hot, axis=1)
-    return np.mean(predictii == etichete_reale)
+    # Make predictions on test set
+    y_test_pred = perceptron.predict(X_test)
 
+    print(f"Test predictions shape: {y_test_pred.shape}")
+    print(f"Unique predictions: {np.unique(y_test_pred)}")
 
-# --- PASUL 3: Execuția Principală ---
-if __name__ == '__main__':
-    # --- Încărcarea datelor ---
-    X_antrenare_brut, y_antrenare_brut = descarca_mnist(este_antrenament=True)
-    X_validare_brut, y_validare_brut = descarca_mnist(este_antrenament=False)
+    # Save predictions to CSV for submission
+    import pandas as pd
 
-    X_antrenare, Y_antrenare = preproceseaza_date(X_antrenare_brut, y_antrenare_brut)
-    X_validare, Y_validare = preproceseaza_date(X_validare_brut, y_validare_brut)
+    submission_df = pd.DataFrame({
+        'ID': np.arange(len(y_test_pred)),
+        'target': y_test_pred
+    })
 
-    print(f"\nForma datelor de antrenare: {X_antrenare.shape}")
-    print(f"Forma datelor de validare: {X_validare.shape}")
+    submission_df.to_csv('/kaggle/working/submission.csv', index=False)
 
-    # --- Inițializarea Ponderilor și Hiperparametrilor pentru Perceptron Simplu ---
-    nr_caracteristici = X_antrenare.shape[1]
-    nr_clase = Y_antrenare.shape[1]
-
-    # Ponderi și bias pentru un singur strat
-    W = np.random.randn(nr_caracteristici, nr_clase) * 0.01
-    b = np.zeros((1, nr_clase))
-
-    
-    rata_invatare_initiala = 0.1
-    rata_decay = 0.01  # Scădere lentă a ratei de învățare
-    epoci = 50  
-    dimensiune_batch = 64
-
-    start_time = time.time()
-    print("\n--- Început Antrenament Perceptron Simplu ---")
-
-    # --- Bucla de Antrenament ---
-    for epoca in range(epoci):
-        
-        rata_invatare = rata_invatare_initiala / (1 + rata_decay * epoca)
-
-        permutare = np.random.permutation(X_antrenare.shape[0])
-
-        for i in range(0, X_antrenare.shape[0], dimensiune_batch):
-            indici = permutare[i:i + dimensiune_batch]
-            X_batch, Y_batch = X_antrenare[indici], Y_antrenare[indici]
-
-            # --- Propagare Înainte ---
-            A_batch = propagare_inainte(X_batch, W, b)
-
-            # --- Propagare Înapoi (Calculul Gradientului) ---
-            dZ = A_batch - Y_batch
-            grad_W = (X_batch.T @ dZ) / dimensiune_batch
-            grad_b = np.sum(dZ, axis=0) / dimensiune_batch
-
-            # --- Actualizarea Ponderilor (Gradient Descent) ---
-            W -= rata_invatare * grad_W
-            b -= rata_invatare * grad_b
-
-        # Afișarea performanței pe setul de validare la finalul fiecărei epoci
-        pred_validare = propagare_inainte(X_validare, W, b)
-        acuratete = calculeaza_acuratete(pred_validare, Y_validare)
-        print(f"Epoca {epoca + 1}/{epoci}, Acuratețe Validare: {acuratete * 100:.2f}%")
-
-    end_time = time.time()
-    print(f"\nAntrenament finalizat în {end_time - start_time:.2f} secunde.")
-
-    
-
+    print("\nSubmission saved to /kaggle/working/submission.csv")
+    print(submission_df.head())
