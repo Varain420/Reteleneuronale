@@ -21,10 +21,10 @@ class Perceptron:
         self.W = np.random.randn(input_size, output_size) * np.sqrt(2.0 / (input_size + output_size))
         self.b = np.zeros((output_size,))
         
-        # Momentum parameters (reduced for stability)
+        # Momentum parameters
         self.v_W = np.zeros_like(self.W)
         self.v_b = np.zeros_like(self.b)
-        self.beta = 0.9  # back to standard momentum
+        self.beta = 0.9
     
     def softmax(self, z):
         """
@@ -139,7 +139,7 @@ class Perceptron:
         
         best_val_acc = 0
         patience_counter = 0
-        patience = 20  # Increased patience
+        patience = 25  # Increased patience
         
         for epoch in range(epochs):
             # Gentle learning rate decay
@@ -218,6 +218,26 @@ class Perceptron:
         return np.mean(predictions == y)
 
 
+def add_polynomial_features(X, degree=2):
+    """
+    Add polynomial features to input data.
+    Only adds squared features to keep dimensionality manageable.
+    
+    Args:
+        X: Input matrix (m, 784)
+        degree: Polynomial degree (only 2 supported for efficiency)
+    
+    Returns:
+        Enhanced feature matrix
+    """
+    if degree == 2:
+        # Add squared features for non-zero pixels (to avoid too many features)
+        X_squared = X ** 2
+        # Concatenate original and squared features
+        return np.concatenate([X, X_squared], axis=1)
+    return X
+
+
 # ============================================================================
 # MAIN: Load data and train perceptron
 # ============================================================================
@@ -233,7 +253,6 @@ if __name__ == "__main__":
         test_data = pickle.load(f)
     
     # Data structure: tuple of (image, label) pairs
-    # Extract images and labels from the tuple of tuples
     X_train = np.array([item[0] for item in train_data], dtype=np.float32)
     y_train = np.array([item[1] for item in train_data], dtype=np.int32)
     
@@ -254,12 +273,16 @@ if __name__ == "__main__":
     X_train = X_train / 255.0
     X_test = X_test / 255.0
     
-    # No preprocessing - let the model learn from raw normalized data
-    # This often works better for simple linear models
+    # Add polynomial features for better decision boundaries
+    print("\nAdding polynomial features...")
+    X_train = add_polynomial_features(X_train, degree=2)
+    X_test = add_polynomial_features(X_test, degree=2)
+    print(f"Enhanced training set shape: {X_train.shape}")
+    print(f"Enhanced test set shape: {X_test.shape}")
     
-    # Split into training and validation sets (90/10 split for more training data)
-    n_train = int(0.9 * X_train.shape[0])
-    indices = np.random.seed(42)  # Fixed seed for reproducibility
+    # Split into training and validation sets (92/8 split)
+    n_train = int(0.92 * X_train.shape[0])
+    np.random.seed(42)
     indices = np.random.permutation(X_train.shape[0])
     
     train_indices = indices[:n_train]
@@ -273,24 +296,22 @@ if __name__ == "__main__":
     print(f"\nTraining split shape: {X_train_split.shape}")
     print(f"Validation split shape: {X_val.shape}")
     
-    # Initialize and train perceptron with optimized hyperparameters
     print("\n=== Phase 1: Training with validation ===")
-    perceptron = Perceptron(input_size=X_train.shape[1], output_size=10, learning_rate=0.5)
+    perceptron = Perceptron(input_size=X_train.shape[1], output_size=10, learning_rate=0.3)
     
     perceptron.train(
         X_train_split, y_train_split,
         X_val=X_val, y_val=y_val,
-        epochs=300,
-        batch_size=256
+        epochs=150,
+        batch_size=128
     )
     
-    # Evaluate on validation set
     val_accuracy = perceptron.accuracy(X_val, y_val)
     print(f"\nPhase 1 Validation Accuracy: {val_accuracy:.4f}")
     
-    # Phase 2: Fine-tune on ALL training data for final submission
+    # Phase 2: Fine-tune on ALL training data
     print("\n=== Phase 2: Fine-tuning on full dataset ===")
-    perceptron_final = Perceptron(input_size=X_train.shape[1], output_size=10, learning_rate=0.3)
+    perceptron_final = Perceptron(input_size=X_train.shape[1], output_size=10, learning_rate=0.15)
     
     # Initialize with best weights from phase 1
     perceptron_final.W = perceptron.best_W.copy()
@@ -300,15 +321,12 @@ if __name__ == "__main__":
     perceptron_final.train(
         X_train, y_train,
         X_val=None, y_val=None,
-        epochs=50,
-        batch_size=256
+        epochs=40,
+        batch_size=128
     )
     
-    # Use the fine-tuned model for predictions
-    perceptron = perceptron_final
-    
     # Make predictions on test set
-    y_test_pred = perceptron.predict(X_test)
+    y_test_pred = perceptron_final.predict(X_test)
     
     print(f"Test predictions shape: {y_test_pred.shape}")
     print(f"Unique predictions: {np.unique(y_test_pred)}")
