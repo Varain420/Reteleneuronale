@@ -4,14 +4,7 @@ import os
 
 class Perceptron:
     def __init__(self, input_size=784, output_size=10, learning_rate=0.01):
-        """
-        Initialize the perceptron with random weights and zero bias.
         
-        Args:
-            input_size: Number of input features (784 for MNIST)
-            output_size: Number of output classes (10 for digits 0-9)
-            learning_rate: Learning rate for gradient descent
-        """
         self.learning_rate = learning_rate
         self.input_size = input_size
         self.output_size = output_size
@@ -27,30 +20,14 @@ class Perceptron:
         self.beta = 0.9
     
     def softmax(self, z):
-        """
-        Apply softmax activation function with numerical stability.
         
-        Args:
-            z: Weighted sum (m, 10)
-        
-        Returns:
-            Probabilities after softmax (m, 10)
-        """
         # Subtract max for numerical stability
         z_shifted = z - np.max(z, axis=1, keepdims=True)
         exp_z = np.exp(z_shifted)
         return exp_z / np.sum(exp_z, axis=1, keepdims=True)
     
     def forward_propagation(self, X):
-        """
-        Perform forward propagation: compute weighted sum and apply softmax.
         
-        Args:
-            X: Input matrix of shape (m, 784)
-        
-        Returns:
-            Output probabilities of shape (m, 10)
-        """
         # z = W · x + b
         z = np.dot(X, self.W) + self.b
         
@@ -60,16 +37,7 @@ class Perceptron:
         return y
     
     def cross_entropy_loss(self, y_pred, y_true):
-        """
-        Calculate cross-entropy loss.
         
-        Args:
-            y_pred: Predicted probabilities (m, 10)
-            y_true: One-hot encoded true labels (m, 10)
-        
-        Returns:
-            Average loss across batch
-        """
         m = y_true.shape[0]
         
         # Clip predictions to avoid log(0)
@@ -81,14 +49,7 @@ class Perceptron:
         return loss
     
     def backward_propagation(self, X, y_pred, y_true):
-        """
-        Perform backward propagation and update weights and bias with momentum.
         
-        Args:
-            X: Input matrix (m, 784)
-            y_pred: Predicted probabilities (m, 10)
-            y_true: One-hot encoded true labels (m, 10)
-        """
         m = X.shape[0]
         
         # Calculate gradient: (Target - y)
@@ -107,33 +68,14 @@ class Perceptron:
         self.b += self.learning_rate * self.v_b
     
     def one_hot_encode(self, y, num_classes=10):
-        """
-        Convert class labels to one-hot encoding.
         
-        Args:
-            y: Class labels (m,)
-            num_classes: Number of classes
-        
-        Returns:
-            One-hot encoded matrix (m, num_classes)
-        """
         m = y.shape[0]
         one_hot = np.zeros((m, num_classes))
         one_hot[np.arange(m), y.astype(int)] = 1
         return one_hot
     
     def train(self, X_train, y_train, X_val=None, y_val=None, epochs=20, batch_size=32):
-        """
-        Train the perceptron using mini-batch gradient descent with learning rate decay.
         
-        Args:
-            X_train: Training input (m, 784)
-            y_train: Training labels (m,)
-            X_val: Validation input (optional)
-            y_val: Validation labels (optional)
-            epochs: Number of training epochs
-            batch_size: Size of mini-batches
-        """
         m = X_train.shape[0]
         y_train_encoded = self.one_hot_encode(y_train)
         
@@ -191,15 +133,7 @@ class Perceptron:
                 print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_loss:.4f}")
     
     def predict(self, X):
-        """
-        Make predictions on input data.
         
-        Args:
-            X: Input matrix (m, 784)
-        
-        Returns:
-            Predicted class labels (m,)
-        """
         y_pred = self.forward_propagation(X)
         return np.argmax(y_pred, axis=1)
     
@@ -219,17 +153,7 @@ class Perceptron:
 
 
 def add_polynomial_features(X, degree=2):
-    """
-    Add polynomial features to input data.
-    Only adds squared features to keep dimensionality manageable.
     
-    Args:
-        X: Input matrix (m, 784)
-        degree: Polynomial degree (only 2 supported for efficiency)
-    
-    Returns:
-        Enhanced feature matrix
-    """
     if degree == 2:
         # Add squared features for non-zero pixels (to avoid too many features)
         X_squared = X ** 2
@@ -343,3 +267,4 @@ if __name__ == "__main__":
     
     print("\nSubmission saved to /kaggle/working/submission.csv")
     print(submission_df.head())
+
