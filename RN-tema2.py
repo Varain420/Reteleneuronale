@@ -79,8 +79,7 @@ class Perceptron:
         
         m = X.shape[0]
         
-        # CORRECTED: Calculate gradient as (y_pred - y_true) for proper gradient descent
-        # This is the derivative of cross-entropy loss with softmax
+       
         gradient = y_pred - y_true  # Shape: (m, output_size)
         
         # Compute weight gradient with L2 regularization
@@ -93,7 +92,7 @@ class Perceptron:
         # Compute bias gradient
         db = np.sum(gradient, axis=0) / m  # Shape: (output_size,)
         
-        # CORRECTED: Subtract gradients (gradient descent, not ascent)
+        
         self.W -= self.learning_rate * dW
         self.b -= self.learning_rate * db
     
@@ -394,3 +393,4 @@ if __name__ == "__main__":
     print("=" * 70)
     print(f"Best validation accuracy: {perceptron.best_val_accuracy:.4f}")
     print(f"Total epochs trained: {len(history['train_loss'])}")
+
