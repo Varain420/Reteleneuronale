@@ -245,7 +245,7 @@ def load_data(data_path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     return X_train, y_train, X_test
 
 
-def preprocess_data(X_train: np.ndarray, X_test: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def preprocess_data(X_train: np.ndarray, X_test: np.ndarray, augment: bool = True) -> Tuple[np.ndarray, np.ndarray]:
     # Flatten
     X_train = X_train.reshape(X_train.shape[0], -1)
     X_test = X_test.reshape(X_test.shape[0], -1)
@@ -253,6 +253,12 @@ def preprocess_data(X_train: np.ndarray, X_test: np.ndarray) -> Tuple[np.ndarray
     # Normalize to [0, 1]
     X_train = X_train / 255.0
     X_test = X_test / 255.0
+    
+    # Simple data augmentation: add small random noise
+    if augment:
+        noise = np.random.normal(0, 0.01, X_train.shape)
+        X_train_augmented = np.clip(X_train + noise, 0, 1)
+        X_train = X_train_augmented
     
     return X_train, X_test
 
@@ -283,18 +289,19 @@ def train_val_split(
 if __name__ == "__main__":
     # OPTIMIZED CONFIGURATION FOR >92.5%
     DATA_PATH = '/kaggle/input/fii-nn-2025-homework-2'
-    LEARNING_RATE = 0.3  # Increased from 0.1
-    L2_LAMBDA = 0.0001  # Reduced regularization
-    EPOCHS = 150  # More epochs
-    BATCH_SIZE = 128  # Larger batches
-    EARLY_STOPPING_PATIENCE = 20  # More patience
+    LEARNING_RATE = 0.4  # Increased further
+    L2_LAMBDA = 0.00005  # Even less regularization
+    EPOCHS = 200  # More epochs
+    BATCH_SIZE = 256  # Even larger batches
+    EARLY_STOPPING_PATIENCE = 25  # More patience
     LR_SCHEDULE = 'step'
-    LR_DECAY_RATE = 0.95
-    LR_DECAY_EPOCHS = 10
-    VAL_RATIO = 0.15  # Less validation, more training
+    LR_DECAY_RATE = 0.96  # Slower decay
+    LR_DECAY_EPOCHS = 15  # Decay less frequently
+    VAL_RATIO = 0.12  # Even more training data (88/12 split)
     USE_MOMENTUM = True
     MOMENTUM_BETA = 0.9
     RANDOM_SEED = 42
+    DATA_AUGMENTATION = True
     
     print("=" * 80)
     print("IMPROVED PERCEPTRON - TARGET: >92.5% ACCURACY")
@@ -308,8 +315,10 @@ if __name__ == "__main__":
     print(f"✓ Loaded: Train {X_train.shape}, Test {X_test.shape}")
     
     print("\n[2/6] Preprocessing...")
-    X_train, X_test = preprocess_data(X_train, X_test)
+    X_train, X_test = preprocess_data(X_train, X_test, augment=DATA_AUGMENTATION)
     print(f"✓ Preprocessed: Train {X_train.shape}, Test {X_test.shape}")
+    if DATA_AUGMENTATION:
+        print(f"✓ Data augmentation applied (Gaussian noise σ=0.01)")
     
     print("\n[3/6] Train-validation split...")
     X_train_split, y_train_split, X_val, y_val = train_val_split(
@@ -318,7 +327,7 @@ if __name__ == "__main__":
     print(f"✓ Train: {X_train_split.shape}, Val: {X_val.shape}")
     
     print("\n[4/6] Training Phase 1 (with validation)...")
-    print(f"Config: LR={LEARNING_RATE}, L2={L2_LAMBDA}, Batch={BATCH_SIZE}, Momentum={USE_MOMENTUM}")
+    print(f"Config: LR={LEARNING_RATE}, L2={L2_LAMBDA}, Batch={BATCH_SIZE}, Momentum={USE_MOMENTUM}, Augment={DATA_AUGMENTATION}")
     print()
     
     perceptron = ImprovedPerceptron(
